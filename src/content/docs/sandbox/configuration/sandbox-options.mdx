@@ -108,6 +108,68 @@ const sandbox2 = getSandbox(env.Sandbox, 'user-env', {
 
 Precedence: `options` > `env vars` > SDK defaults
 
+### transportMode
+
+**Type**: `'http' | 'websocket'`
+**Default**: `'http'`
+
+Communication protocol between the SDK and container runtime. WebSocket mode multiplexes all operations over a single persistent connection, reducing sub-request count.
+
+<TypeScriptExample>
+```ts
+// HTTP mode (default) - Each operation is a separate HTTP request
+const sandbox = getSandbox(env.Sandbox, 'user-123');
+
+// WebSocket mode - All operations multiplex over one connection
+const sandbox = getSandbox(env.Sandbox, 'user-456', {
+  transportMode: 'websocket'
+});
+```
+</TypeScriptExample>
+
+**When to use WebSocket mode**:
+
+WebSocket transport is beneficial when running inside Workers or Durable Objects where [sub-request limits](/workers/platform/limits/#subrequests) apply:
+
+- **Many file operations** - Reading or writing multiple files in sequence
+- **Streaming workloads** - Long-running command execution with streaming output
+- **Interactive workflows** - Frequent back-and-forth operations (edit, test, debug cycles)
+- **Process monitoring** - Polling process status or reading logs repeatedly
+
+<TypeScriptExample>
+```ts
+// Example: Bulk file operations benefit from WebSocket mode
+const sandbox = getSandbox(env.Sandbox, 'build-env', {
+  transportMode: 'websocket'
+});
+
+// These operations share a single WebSocket connection
+await sandbox.writeFile('/workspace/src/index.ts', sourceCode);
+await sandbox.writeFile('/workspace/package.json', packageJson);
+await sandbox.writeFile('/workspace/tsconfig.json', tsConfig);
+
+// Run build and stream output
+for await (const event of sandbox.execStream('npm run build')) {
+  console.log(event);
+}
+
+// Check results
+const output = await sandbox.readFile('/workspace/dist/index.js');
+```
+</TypeScriptExample>
+
+:::note[HTTP mode is sufficient for most use cases]
+The default HTTP mode works well for typical sandbox operations. Only switch to WebSocket mode if you're approaching sub-request limits or need to optimize for high-frequency operations.
+:::
+
+**Technical details**:
+
+- WebSocket connection established on first SDK operation
+- Automatic reconnection if connection drops
+- Request/response matching via unique IDs
+- Streaming support via Server-Sent Events over WebSocket
+- Transparent to application code (same API regardless of transport mode)
+
 ### Logging
 
 **Type**: Environment variables
